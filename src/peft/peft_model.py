@@ -61,6 +61,35 @@ PEFT_TYPE_TO_MODEL_MAPPING = {
 }
 
 
+def dynamic_reload_adapter(model, model_id, adapter_name="default", **kwargs):
+
+    if not isinstance(model, PeftModel):
+        try:
+            model = model.module
+        finally:
+            assert isinstance(model, PeftModel)
+
+    # load weights if any
+    path = os.path.join(model_id, kwargs["subfolder"]) if kwargs.get("subfolder", None) is not None else model_id
+
+    if os.path.exists(os.path.join(path, WEIGHTS_NAME)):
+        filename = os.path.join(path, WEIGHTS_NAME)
+    else:
+        try:
+            filename = hf_hub_download(model_id, WEIGHTS_NAME, subfolder=kwargs.get("subfolder", None))
+        except:  # noqa
+            raise ValueError(
+                f"Can't find weights for {model_id} in {model_id} or in the Hugging Face Hub. "
+                f"Please check that the file {WEIGHTS_NAME} is present at {model_id}."
+            )
+
+    adapters_weights = torch.load(
+        filename, map_location=torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    )
+    # load the weights into the model
+    set_peft_model_state_dict(model, adapters_weights, adapter_name=adapter_name)
+
+
 class PeftModel(PushToHubMixin, torch.nn.Module):
     """
     Base model encompassing various Peft methods.
